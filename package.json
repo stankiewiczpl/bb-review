@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "dev": "node --watch --watch-path=src --watch-path=public index.js",
     "test": "node --test tests/*.test.js",
     "test:parser": "node --test tests/parser.test.js",
     "test:bitbucket": "node --test tests/bitbucket.test.js",

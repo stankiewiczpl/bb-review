@@ -1340,6 +1340,16 @@
       return div.innerHTML
     }
 
+    // ── Live reload (for dev mode with --watch) ────────────
+    ;(function() {
+      let wasConnected = false
+      const src = new EventSource('/api/stream')
+      src.onopen = () => {
+        if (wasConnected) location.reload()
+        wasConnected = true
+      }
+    })()
+
     // ── Init ─────────────────────────────────────────────────
     initStartView()
   </script>
