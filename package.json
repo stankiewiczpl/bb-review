@@ -1,0 +1,19 @@
+{
+  "name": "bb-ai-review",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test tests/*.test.js",
+    "test:parser": "node --test tests/parser.test.js",
+    "test:bitbucket": "node --test tests/bitbucket.test.js",
+    "test:claude": "node --test tests/claude.test.js",
+    "test:server": "node --test tests/server.test.js"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "express": "^4.19.2",
+    "open": "^10.1.0"
+  }
+}
