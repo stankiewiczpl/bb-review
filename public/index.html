@@ -426,6 +426,7 @@
 
   <!-- VIEW 3: Review -->
   <section id="view-review" class="view">
+    <div id="review-pr-link" style="margin-bottom:12px;font-size:13px;"></div>
     <div class="summary-box">
       <h3>Podsumowanie</h3>
       <p id="summary-text"></p>
@@ -827,7 +828,8 @@
     // ── VIEW 2: Progress ─────────────────────────────────────
 
     function initProgressView(workspace, repo, prId) {
-      document.getElementById('progress-title').textContent = `AI Review \u2014 ${workspace}/${repo} PR #${prId}`
+      const prUrl = `https://bitbucket.org/${encodeURIComponent(workspace)}/${encodeURIComponent(repo)}/pull-requests/${prId}`
+      document.getElementById('progress-title').innerHTML = `AI Review &mdash; <a href="${prUrl}" target="_blank" style="color:var(--accent);text-decoration:none;">${escapeHtml(workspace)}/${escapeHtml(repo)} PR #${prId} &#8599;</a>`
       document.getElementById('progress-steps').innerHTML = ''
       document.getElementById('claude-output').textContent = ''
       addProgressStep('active', 'Pobieram informacje o PR...')
@@ -923,6 +925,8 @@
       reviewState.currentIndex = 0
       reviewState.results = data.comments.map(function(_, i) { return { index: i, action: 'pending' } })
 
+      const prUrl = `https://bitbucket.org/${encodeURIComponent(reviewState.prInfo.workspace)}/${encodeURIComponent(reviewState.prInfo.repo)}/pull-requests/${reviewState.prInfo.prId}`
+      document.getElementById('review-pr-link').innerHTML = `<a href="${prUrl}" target="_blank" style="color:var(--accent);text-decoration:none;">${escapeHtml(reviewState.prInfo.workspace)}/${escapeHtml(reviewState.prInfo.repo)} PR #${reviewState.prInfo.prId} &#8599;</a>`
       document.getElementById('summary-text').textContent = reviewState.summary
       showComment(0)
     }
