@@ -116,15 +116,15 @@ export function buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptP
  * @param {string} prTitle
  * @param {string} prDescription
  * @param {Array} diffFiles
- * @param {function} onChunk - Called with each stdout chunk
+ * @param {function} onEvent - Called with {type, text} for streaming progress
  * @param {string} [repoPath] - Optional local repo path
  * @param {string} [promptPath] - Optional path to review-agent.md
  * @returns {Promise<{prompt: string, claudeRaw: string, claudeStderr: string, review: object}>}
  */
-export async function reviewWithClaude(prTitle, prDescription, diffFiles, onChunk, repoPath, promptPath) {
+export async function reviewWithClaude(prTitle, prDescription, diffFiles, onEvent, repoPath, promptPath) {
   const prompt = buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptPath)
 
-  const args = ['-p']
+  const args = ['-p', '--output-format', 'stream-json', '--verbose']
   if (repoPath) {
     args.push('--add-dir', repoPath)
   }
@@ -134,8 +134,9 @@ export async function reviewWithClaude(prTitle, prDescription, diffFiles, onChun
       stdio: ['pipe', 'pipe', 'pipe']
     })
 
-    let rawOutput = ''
+    let resultText = ''
     let stderrOutput = ''
+    let lineBuffer = ''
 
     const timeout = setTimeout(() => {
       proc.kill()
@@ -143,9 +144,26 @@ export async function reviewWithClaude(prTitle, prDescription, diffFiles, onChun
     }, TIMEOUT_MS)
 
     proc.stdout.on('data', (chunk) => {
-      const text = chunk.toString()
-      rawOutput += text
-      if (onChunk) onChunk(text)
+      lineBuffer += chunk.toString()
+      const lines = lineBuffer.split('\n')
+      lineBuffer = lines.pop()
+
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const event = JSON.parse(line)
+          if (event.type === 'assistant' && event.subtype === 'text') {
+            if (onEvent) onEvent({ type: 'text', text: event.text })
+          } else if (event.type === 'assistant' && event.subtype === 'tool_use') {
+            if (onEvent) onEvent({ type: 'tool', name: event.name, input: event.input })
+          } else if (event.type === 'result') {
+            resultText = event.result
+            if (onEvent && event.cost_usd !== undefined) {
+              onEvent({ type: 'cost', cost_usd: event.cost_usd, duration_ms: event.duration_ms })
+            }
+          }
+        } catch { /* skip unparseable lines */ }
+      }
     })
 
     proc.stderr.on('data', (chunk) => {
@@ -155,16 +173,30 @@ export async function reviewWithClaude(prTitle, prDescription, diffFiles, onChun
     proc.on('close', (code) => {
       clearTimeout(timeout)
 
+      if (lineBuffer.trim()) {
+        try {
+          const event = JSON.parse(lineBuffer)
+          if (event.type === 'result') {
+            resultText = event.result
+          }
+        } catch { /* ignore */ }
+      }
+
       if (code !== 0) {
         reject(new Error(`Claude zakończył się z kodem ${code}. Stderr: ${stderrOutput.slice(0, 500)}`))
         return
       }
 
+      if (!resultText) {
+        reject(new Error('Claude nie zwrócił wyniku'))
+        return
+      }
+
       try {
-        const review = parseClaudeResponse(rawOutput)
+        const review = parseClaudeResponse(resultText)
         resolve({
           prompt,
-          claudeRaw: rawOutput,
+          claudeRaw: resultText,
           claudeStderr: stderrOutput,
           review
         })

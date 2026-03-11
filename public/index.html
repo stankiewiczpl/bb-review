@@ -469,6 +469,14 @@
       <div class="stat"><span>Odrzucono:</span> <strong id="stat-rejected" style="color:var(--error)">0</strong></div>
       <div class="stat"><span>Pominieto:</span> <strong id="stat-skipped" style="color:var(--text-secondary)">0</strong></div>
     </div>
+    <div id="verdict-section" style="margin: 24px 0;">
+      <h3>Decyzja o PR</h3>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button class="btn btn-success" id="btn-approve-pr" onclick="handlePrVerdict('approve')">Approve PR</button>
+        <button class="btn btn-danger" id="btn-request-changes" onclick="handlePrVerdict('request-changes')">Request changes</button>
+      </div>
+      <div id="verdict-status" style="margin-top:8px;font-size:13px;"></div>
+    </div>
     <div class="summary-actions">
       <button class="btn btn-primary" onclick="handleNewReview()">Nowe review</button>
       <button class="btn btn-secondary" onclick="showView('logs')">Pokaz logi</button>
@@ -861,6 +869,13 @@
         appendClaudeOutput(data.text)
       })
 
+      eventSource.addEventListener('claude-tool', function(e) {
+        const data = JSON.parse(e.data)
+        const inputStr = data.input ? JSON.stringify(data.input) : ''
+        const short = inputStr.length > 120 ? inputStr.slice(0, 120) + '...' : inputStr
+        appendClaudeOutput('\n> ' + data.name + ' ' + short + '\n')
+      })
+
       eventSource.addEventListener('review-ready', function(e) {
         const data = JSON.parse(e.data)
         currentReviewData = data
@@ -1190,6 +1205,48 @@
       document.getElementById('stat-approved').textContent = approved
       document.getElementById('stat-rejected').textContent = rejected
       document.getElementById('stat-skipped').textContent = skipped
+    }
+
+    async function handlePrVerdict(action) {
+      const btnApprove = document.getElementById('btn-approve-pr')
+      const btnChanges = document.getElementById('btn-request-changes')
+      const statusEl = document.getElementById('verdict-status')
+      btnApprove.disabled = true
+      btnChanges.disabled = true
+      statusEl.textContent = ''
+
+      try {
+        const res = await fetch('/api/pr-verdict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action,
+            email: reviewState.prInfo.email,
+            token: reviewState.prInfo.token,
+            workspace: reviewState.prInfo.workspace,
+            repo: reviewState.prInfo.repo,
+            prId: reviewState.prInfo.prId
+          })
+        })
+        const data = await res.json()
+        if (data.ok) {
+          const label = action === 'approve' ? 'Approved' : 'Changes requested'
+          statusEl.className = 'status-ok'
+          statusEl.textContent = label
+          btnApprove.style.display = 'none'
+          btnChanges.style.display = 'none'
+        } else {
+          statusEl.className = 'status-err'
+          statusEl.textContent = data.error
+          btnApprove.disabled = false
+          btnChanges.disabled = false
+        }
+      } catch (err) {
+        statusEl.className = 'status-err'
+        statusEl.textContent = err.message
+        btnApprove.disabled = false
+        btnChanges.disabled = false
+      }
     }
 
     function handleNewReview() {

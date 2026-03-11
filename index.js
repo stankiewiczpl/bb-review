@@ -59,7 +59,7 @@ async function main() {
   console.log(chalk.green(`   Serwer dziala: ${url}`))
   console.log(chalk.gray('   Ctrl+C aby zakonczyc\n'))
 
-  if (!process.env.NODE_WATCH) await open(url)
+  if (!process.env.DEV) await open(url)
 }
 
 main().catch(err => {

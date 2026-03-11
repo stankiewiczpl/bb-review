@@ -6,7 +6,7 @@ import express from 'express'
 import { existsSync, statSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { testConnection, getPrInfo, getPrDiff, postInlineComment, postGeneralComment } from './bitbucket.js'
+import { testConnection, getPrInfo, getPrDiff, postInlineComment, postGeneralComment, approvePr, requestChangesPr } from './bitbucket.js'
 import { reviewWithClaude } from './claude.js'
 import { parseDiffFiles } from './parser.js'
 
@@ -147,6 +147,29 @@ export function createApp() {
     }
   })
 
+  // ── PR verdict (approve / request changes) ─────────────────
+
+  app.post('/api/pr-verdict', async (req, res) => {
+    const { action, email, token, workspace, repo, prId } = req.body
+
+    if (!email || !token || !workspace || !repo || !prId) {
+      return res.json({ ok: false, error: 'Brakuje wymaganych pól' })
+    }
+
+    try {
+      if (action === 'approve') {
+        await approvePr(email, token, workspace, repo, prId)
+      } else if (action === 'request-changes') {
+        await requestChangesPr(email, token, workspace, repo, prId)
+      } else {
+        return res.json({ ok: false, error: 'Nieznana akcja' })
+      }
+      res.json({ ok: true })
+    } catch (err) {
+      res.json({ ok: false, error: err.message })
+    }
+  })
+
   // ── Cancel ──────────────────────────────────────────────────
 
   app.post('/api/cancel', (req, res) => {
@@ -261,7 +284,15 @@ async function runReviewPipeline({ workspace, repo, prId, email, token, repoPath
       prInfo.title,
       prInfo.description || '',
       diffFiles,
-      (text) => sendSSE('claude-chunk', { text }),
+      (event) => {
+        if (event.type === 'text') {
+          sendSSE('claude-chunk', { text: event.text })
+        } else if (event.type === 'tool') {
+          sendSSE('claude-tool', { name: event.name, input: event.input })
+        } else if (event.type === 'cost') {
+          sendSSE('claude-cost', { cost_usd: event.cost_usd, duration_ms: event.duration_ms })
+        }
+      },
       repoPath
     )
 

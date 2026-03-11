@@ -108,6 +108,42 @@ export async function postInlineComment(email, token, workspace, repo, prId, { p
 }
 
 /**
+ * Approve a PR.
+ * Throws on HTTP error.
+ */
+export async function approvePr(email, token, workspace, repo, prId) {
+  const url = `${BB_API}/repositories/${workspace}/${repo}/pullrequests/${prId}/approve`
+  const headers = bbHeaders(email, token)
+  delete headers['Content-Type']
+  const res = await fetch(url, { method: 'POST', headers })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`HTTP ${res.status}: ${text}`)
+  }
+
+  return res.json()
+}
+
+/**
+ * Request changes on a PR.
+ * Throws on HTTP error.
+ */
+export async function requestChangesPr(email, token, workspace, repo, prId) {
+  const url = `${BB_API}/repositories/${workspace}/${repo}/pullrequests/${prId}/request-changes`
+  const headers = bbHeaders(email, token)
+  delete headers['Content-Type']
+  const res = await fetch(url, { method: 'POST', headers })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`HTTP ${res.status}: ${text}`)
+  }
+
+  return res.json()
+}
+
+/**
  * Post a general (non-inline) comment on a PR.
  * Throws on HTTP error.
  */
