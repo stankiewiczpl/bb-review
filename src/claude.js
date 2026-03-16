@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = join(__dirname, '..')
 
-const TIMEOUT_MS = 600_000 // 10 minutes
+const TIMEOUT_MS = 900_000 // 15 minutes
 
 const JSON_FORMAT_INSTRUCTIONS = `
 ## Format odpowiedzi
@@ -50,6 +50,13 @@ Używaj go jako kontekstu do review:
 NIE komentuj plików, które nie są częścią diff-a.
 Skup się WYŁĄCZNIE na zmianach w PR, ale UŻYWAJ reszty kodu
 jako kontekstu do oceny tych zmian.
+
+## Narzędzia MCP
+
+Pracujesz w katalogu projektu — najpierw sprawdź ustawienia projektu i dostępne narzędzia MCP.
+Jeśli masz dostęp do narzędzi Serena MCP (np. serena_search_symbol, serena_find_references, serena_get_definition, serena_get_file_contents itp.) — wykorzystaj je jako GŁÓWNE narzędzie do analizy kodu.
+Serena daje Ci semantyczne przeszukiwanie: definicje, referencje, symbole, hierarchie klas i zależności.
+Używaj Serena zamiast zwykłego Grep/Read tam gdzie to możliwe — da to bardziej precyzyjne i kontekstowe review.
 `
 
 /**
@@ -124,19 +131,22 @@ export function buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptP
 export async function reviewWithClaude(prTitle, prDescription, diffFiles, onEvent, repoPath, promptPath) {
   const prompt = buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptPath)
 
-  const args = ['-p', '--output-format', 'stream-json', '--verbose']
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages']
   if (repoPath) {
     args.push('--add-dir', repoPath)
   }
 
   return new Promise((resolve, reject) => {
     const proc = spawn('claude', args, {
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: repoPath || undefined
     })
 
     let resultText = ''
     let stderrOutput = ''
     let lineBuffer = ''
+    let currentToolName = null
+    let currentToolInput = ''
 
     const timeout = setTimeout(() => {
       proc.kill()
@@ -152,14 +162,32 @@ export async function reviewWithClaude(prTitle, prDescription, diffFiles, onEven
         if (!line.trim()) continue
         try {
           const event = JSON.parse(line)
-          if (event.type === 'assistant' && event.subtype === 'text') {
-            if (onEvent) onEvent({ type: 'text', text: event.text })
-          } else if (event.type === 'assistant' && event.subtype === 'tool_use') {
-            if (onEvent) onEvent({ type: 'tool', name: event.name, input: event.input })
+          if (event.type === 'stream_event') {
+            const inner = event.event
+            if (inner.type === 'content_block_delta') {
+              if (inner.delta?.type === 'text_delta' && inner.delta.text) {
+                if (onEvent) onEvent({ type: 'text', text: inner.delta.text })
+              } else if (inner.delta?.type === 'input_json_delta' && inner.delta.partial_json) {
+                currentToolInput += inner.delta.partial_json
+              }
+            } else if (inner.type === 'content_block_start') {
+              if (inner.content_block?.type === 'tool_use') {
+                currentToolName = inner.content_block.name
+                currentToolInput = ''
+              }
+            } else if (inner.type === 'content_block_stop') {
+              if (currentToolName) {
+                let input = null
+                try { input = JSON.parse(currentToolInput) } catch { /* ignore */ }
+                if (onEvent) onEvent({ type: 'tool', name: currentToolName, input })
+                currentToolName = null
+                currentToolInput = ''
+              }
+            }
           } else if (event.type === 'result') {
             resultText = event.result
-            if (onEvent && event.cost_usd !== undefined) {
-              onEvent({ type: 'cost', cost_usd: event.cost_usd, duration_ms: event.duration_ms })
+            if (onEvent && event.total_cost_usd !== undefined) {
+              onEvent({ type: 'cost', cost_usd: event.total_cost_usd, duration_ms: event.duration_ms })
             }
           }
         } catch { /* skip unparseable lines */ }
