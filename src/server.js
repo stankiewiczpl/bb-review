@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { testConnection, getPrInfo, getPrDiff, postInlineComment, postGeneralComment, approvePr, requestChangesPr } from './bitbucket.js'
 import { reviewWithClaude } from './claude.js'
 import { parseDiffFiles } from './parser.js'
+import { extractTicketKey, getJiraTicket } from './jira.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = join(__dirname, '..')
@@ -74,7 +75,7 @@ export function createApp() {
   // ── Start review (async pipeline) ───────────────────────────
 
   app.post('/api/start-review', (req, res) => {
-    let { workspace, repo, prId, email, token, repoPath } = req.body
+    let { workspace, repo, prId, email, token, repoPath, jiraDomain, jiraToken } = req.body
 
     if (!workspace || !repo || !prId || !email || !token) {
       return res.json({ ok: false, error: 'Brakuje wymaganych pól' })
@@ -94,7 +95,7 @@ export function createApp() {
     // Return immediately, run pipeline in background
     res.json({ ok: true })
 
-    runReviewPipeline({ workspace, repo, prId, email, token, repoPath })
+    runReviewPipeline({ workspace, repo, prId, email, token, repoPath, jiraDomain, jiraToken })
   })
 
   // ── Get current review ──────────────────────────────────────
@@ -263,7 +264,7 @@ export function createApp() {
 
 // ── Review pipeline ─────────────────────────────────────────────
 
-async function runReviewPipeline({ workspace, repo, prId, email, token, repoPath }) {
+async function runReviewPipeline({ workspace, repo, prId, email, token, repoPath, jiraDomain, jiraToken }) {
   try {
     sendSSE('status', { step: 'pr-loading', message: 'Pobieranie informacji o PR...' })
 
@@ -279,6 +280,21 @@ async function runReviewPipeline({ workspace, repo, prId, email, token, repoPath
     const diffFiles = parseDiffFiles(rawDiff)
     sendSSE('diff-loaded', { filesCount: diffFiles.length })
 
+    // Jira ticket (optional)
+    let jiraTicket = null
+    if (jiraDomain && jiraToken) {
+      const ticketKey = extractTicketKey(prInfo.title) || extractTicketKey(prInfo.source?.branch?.name)
+      if (ticketKey) {
+        sendSSE('status', { step: 'jira-loading', message: `Pobieranie ticketa Jira: ${ticketKey}...` })
+        jiraTicket = await getJiraTicket(email, jiraToken, jiraDomain, ticketKey)
+        if (jiraTicket) {
+          sendSSE('jira-loaded', { key: jiraTicket.key, summary: jiraTicket.summary })
+        } else {
+          sendSSE('status', { step: 'jira-skipped', message: `Nie udało się pobrać ticketa ${ticketKey}` })
+        }
+      }
+    }
+
     sendSSE('status', { step: 'claude-working', message: 'Claude analizuje kod...' })
     const result = await reviewWithClaude(
       prInfo.title,
@@ -293,7 +309,9 @@ async function runReviewPipeline({ workspace, repo, prId, email, token, repoPath
           sendSSE('claude-cost', { cost_usd: event.cost_usd, duration_ms: event.duration_ms })
         }
       },
-      repoPath
+      repoPath,
+      undefined,
+      jiraTicket
     )
 
     const logPath = saveLog(workspace, repo, prId, {

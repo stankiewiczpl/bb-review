@@ -411,6 +411,15 @@
         </div>
       </div>
 
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>Jira domain (opcjonalne)</label>
+        <input type="text" id="input-jira-domain" placeholder="firma.atlassian.net">
+      </div>
+      <div class="form-group" id="jira-token-group" style="margin-bottom: 16px; display: none;">
+        <label>Jira API token (scope: <code>read:jira-work</code>)</label>
+        <input type="password" id="input-jira-token" placeholder="Osobny token dla Jira">
+      </div>
+
       <button id="btn-start-review" class="btn btn-primary" onclick="handleStartReview()">Uruchom review</button>
     </div>
   </section>
@@ -643,6 +652,11 @@
         document.getElementById('cb-use-context').checked = true
         document.getElementById('context-path-group').style.display = 'block'
       }
+      if (config.jiraDomain) {
+        document.getElementById('input-jira-domain').value = config.jiraDomain
+        document.getElementById('jira-token-group').style.display = 'block'
+      }
+      if (config.jiraToken) document.getElementById('input-jira-token').value = config.jiraToken
       if (config.email && config.token) autoReconnect(config.email, config.token)
     }
 
@@ -742,6 +756,11 @@
       input.type = input.type === 'password' ? 'text' : 'password'
     })
 
+    // Jira domain — show/hide token field
+    document.getElementById('input-jira-domain').addEventListener('input', function(e) {
+      document.getElementById('jira-token-group').style.display = e.target.value.trim() ? 'block' : 'none'
+    })
+
     // Context checkbox
     document.getElementById('cb-use-context').addEventListener('change', function(e) {
       document.getElementById('context-path-group').style.display = e.target.checked ? 'block' : 'none'
@@ -813,7 +832,10 @@
         if (!repoPath) { alert('Podaj sciezke do repozytorium'); return }
       }
 
-      saveConfig({ lastWorkspace: workspace, lastRepo: repo, lastRepoPath: repoPath || '' })
+      const jiraDomain = document.getElementById('input-jira-domain').value.trim() || null
+      const jiraToken = document.getElementById('input-jira-token').value.trim() || null
+
+      saveConfig({ lastWorkspace: workspace, lastRepo: repo, lastRepoPath: repoPath || '', jiraDomain: jiraDomain || '', jiraToken: jiraToken || '' })
 
       reviewState.prInfo = { email, token, workspace, repo, prId }
 
@@ -821,7 +843,7 @@
         const res = await fetch('/api/start-review', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workspace, repo, prId, email, token, repoPath })
+          body: JSON.stringify({ workspace, repo, prId, email, token, repoPath, jiraDomain, jiraToken })
         })
         const data = await res.json()
         if (data.ok) {
@@ -864,6 +886,11 @@
       eventSource.addEventListener('diff-loaded', function(e) {
         const data = JSON.parse(e.data)
         markLastStepDone('Pobrano diff (' + data.filesCount + ' plikow)')
+      })
+
+      eventSource.addEventListener('jira-loaded', function(e) {
+        const data = JSON.parse(e.data)
+        markLastStepDone('Jira: ' + data.key + ' — ' + data.summary)
       })
 
       eventSource.addEventListener('claude-chunk', function(e) {

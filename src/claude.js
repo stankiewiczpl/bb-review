@@ -82,9 +82,10 @@ export function loadReviewPrompt(promptPath) {
  * @param {Array<{path: string, diff: string}>} diffFiles - Parsed diff files
  * @param {string} [repoPath] - Optional local repo path for --cwd context
  * @param {string} [promptPath] - Optional custom path to review-agent.md
+ * @param {object} [jiraTicket] - Optional Jira ticket data
  * @returns {string} Full prompt
  */
-export function buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptPath) {
+export function buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptPath, jiraTicket) {
   const reviewPrompt = loadReviewPrompt(promptPath)
 
   let diffSection = ''
@@ -108,6 +109,16 @@ export function buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptP
     prompt += PROJECT_CONTEXT_INSTRUCTIONS + '\n'
   }
 
+  if (jiraTicket) {
+    prompt += `## Ticket Jira: ${jiraTicket.key}\n\n`
+    prompt += `**Typ:** ${jiraTicket.type}\n`
+    prompt += `**Status:** ${jiraTicket.status}\n`
+    prompt += `**Tytuł:** ${jiraTicket.summary}\n\n`
+    if (jiraTicket.description) {
+      prompt += `**Opis zgłoszenia:**\n${jiraTicket.description}\n\n`
+    }
+  }
+
   prompt += `## Pull Request\n\n`
   prompt += `**Tytuł:** ${prTitle}\n\n`
   if (prDescription) {
@@ -126,12 +137,13 @@ export function buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptP
  * @param {function} onEvent - Called with {type, text} for streaming progress
  * @param {string} [repoPath] - Optional local repo path
  * @param {string} [promptPath] - Optional path to review-agent.md
+ * @param {object} [jiraTicket] - Optional Jira ticket data
  * @returns {Promise<{prompt: string, claudeRaw: string, claudeStderr: string, review: object}>}
  */
-export async function reviewWithClaude(prTitle, prDescription, diffFiles, onEvent, repoPath, promptPath) {
-  const prompt = buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptPath)
+export async function reviewWithClaude(prTitle, prDescription, diffFiles, onEvent, repoPath, promptPath, jiraTicket) {
+  const prompt = buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptPath, jiraTicket)
 
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages']
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--allowedTools', 'mcp__serena__*,Read,Grep,Glob']
   if (repoPath) {
     args.push('--add-dir', repoPath)
   }
