@@ -196,10 +196,42 @@ export async function reviewWithClaude(prTitle, prDescription, diffFiles, onEven
                 currentToolInput = ''
               }
             }
+          } else if (event.type === 'system') {
+            if (onEvent) onEvent({ type: 'system', model: event.model, tools: event.tools })
+          } else if (event.type === 'assistant') {
+            const msg = event.message
+            if (msg?.content) {
+              for (const block of msg.content) {
+                if (block.type === 'tool_result') {
+                  if (onEvent) onEvent({ type: 'tool_result', name: block.tool_use_id, content: block.content })
+                } else if (block.type === 'tool_use') {
+                  if (onEvent) onEvent({ type: 'tool_result', name: block.name, content: block.input })
+                }
+              }
+            }
+          } else if (event.type === 'user') {
+            if (event.message?.content) {
+              for (const block of event.message.content) {
+                if (block.type === 'tool_result') {
+                  const text = Array.isArray(block.content)
+                    ? block.content.filter(c => c.type === 'text').map(c => c.text).join('\n')
+                    : (typeof block.content === 'string' ? block.content : '')
+                  if (text && onEvent) onEvent({ type: 'tool_result', tool_use_id: block.tool_use_id, content: text })
+                }
+              }
+            }
           } else if (event.type === 'result') {
             resultText = event.result
-            if (onEvent && event.total_cost_usd !== undefined) {
-              onEvent({ type: 'cost', cost_usd: event.total_cost_usd, duration_ms: event.duration_ms })
+            if (onEvent) {
+              onEvent({
+                type: 'cost',
+                cost_usd: event.total_cost_usd,
+                duration_ms: event.duration_ms,
+                input_tokens: event.usage?.input_tokens,
+                output_tokens: event.usage?.output_tokens,
+                cache_read: event.usage?.cache_read_input_tokens,
+                cache_creation: event.usage?.cache_creation_input_tokens
+              })
             }
           }
         } catch { /* skip unparseable lines */ }

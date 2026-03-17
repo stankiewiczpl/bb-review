@@ -905,12 +905,36 @@
         appendClaudeOutput('\n> ' + data.name + ' ' + short + '\n')
       })
 
+      eventSource.addEventListener('claude-tool-result', function(e) {
+        const data = JSON.parse(e.data)
+        const content = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
+        const short = content.length > 500 ? content.slice(0, 500) + '...' : content
+        appendClaudeOutput('  ← ' + short + '\n')
+      })
+
+      eventSource.addEventListener('claude-system', function(e) {
+        const data = JSON.parse(e.data)
+        appendClaudeOutput('[system] model: ' + (data.model || '?') + '\n')
+      })
+
+      eventSource.addEventListener('claude-cost', function(e) {
+        const data = JSON.parse(e.data)
+        const secs = data.duration_ms ? (data.duration_ms / 1000).toFixed(1) + 's' : '?'
+        const input = (data.input_tokens || 0).toLocaleString()
+        const output = (data.output_tokens || 0).toLocaleString()
+        const cacheRead = (data.cache_read || 0).toLocaleString()
+        const cacheCreate = (data.cache_creation || 0).toLocaleString()
+        const cost = data.cost_usd ? '$' + data.cost_usd.toFixed(4) : ''
+        appendClaudeOutput('\n[koszt] ' + secs + ' | in: ' + input + ' out: ' + output + ' cache_read: ' + cacheRead + ' cache_create: ' + cacheCreate + ' | ' + cost + '\n')
+      })
+
       eventSource.addEventListener('review-ready', function(e) {
         const data = JSON.parse(e.data)
         currentReviewData = data
         markLastStepDone('Analiza zakonczona')
         eventSource.close()
         eventSource = null
+        playNotificationSound()
         initReviewView(data)
         showView('review')
       })
@@ -942,6 +966,14 @@
         last.querySelector('.icon').innerHTML = '&#9989;'
         if (text) last.querySelector('span:last-child').textContent = text
       }
+    }
+
+    function playNotificationSound() {
+      try {
+        const audio = new Audio('/notification.mp3')
+        audio.volume = 0.5
+        audio.play()
+      } catch { /* audio not available */ }
     }
 
     function appendClaudeOutput(text) {

@@ -305,8 +305,19 @@ async function runReviewPipeline({ workspace, repo, prId, email, token, repoPath
           sendSSE('claude-chunk', { text: event.text })
         } else if (event.type === 'tool') {
           sendSSE('claude-tool', { name: event.name, input: event.input })
+        } else if (event.type === 'tool_result') {
+          sendSSE('claude-tool-result', { tool_use_id: event.tool_use_id, content: event.content })
+        } else if (event.type === 'system') {
+          sendSSE('claude-system', { model: event.model, tools: event.tools })
         } else if (event.type === 'cost') {
-          sendSSE('claude-cost', { cost_usd: event.cost_usd, duration_ms: event.duration_ms })
+          sendSSE('claude-cost', {
+            cost_usd: event.cost_usd,
+            duration_ms: event.duration_ms,
+            input_tokens: event.input_tokens,
+            output_tokens: event.output_tokens,
+            cache_read: event.cache_read,
+            cache_creation: event.cache_creation
+          })
         }
       },
       repoPath,
