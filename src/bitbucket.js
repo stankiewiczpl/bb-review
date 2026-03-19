@@ -95,7 +95,7 @@ export async function postInlineComment(email, token, workspace, repo, prId, { p
     headers: bbHeaders(email, token),
     body: JSON.stringify({
       content: { raw: body },
-      inline: { path, to: line - 1 }
+      inline: { path, to: line }
     })
   })
 

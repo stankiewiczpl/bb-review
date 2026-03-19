@@ -50,7 +50,9 @@ Używaj go jako kontekstu do review:
 NIE komentuj plików, które nie są częścią diff-a.
 Skup się WYŁĄCZNIE na zmianach w PR, ale UŻYWAJ reszty kodu
 jako kontekstu do oceny tych zmian.
+`
 
+const SERENA_MCP_INSTRUCTIONS = `
 ## Narzędzia MCP
 
 Pracujesz w katalogu projektu — najpierw sprawdź ustawienia projektu i dostępne narzędzia MCP.
@@ -83,9 +85,10 @@ export function loadReviewPrompt(promptPath) {
  * @param {string} [repoPath] - Optional local repo path for --cwd context
  * @param {string} [promptPath] - Optional custom path to review-agent.md
  * @param {object} [jiraTicket] - Optional Jira ticket data
+ * @param {boolean} [useSerena] - Whether to include Serena MCP instructions
  * @returns {string} Full prompt
  */
-export function buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptPath, jiraTicket) {
+export function buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptPath, jiraTicket, useSerena) {
   const reviewPrompt = loadReviewPrompt(promptPath)
 
   let diffSection = ''
@@ -107,6 +110,9 @@ export function buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptP
 
   if (repoPath) {
     prompt += PROJECT_CONTEXT_INSTRUCTIONS + '\n'
+    if (useSerena) {
+      prompt += SERENA_MCP_INSTRUCTIONS + '\n'
+    }
   }
 
   if (jiraTicket) {
@@ -138,12 +144,14 @@ export function buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptP
  * @param {string} [repoPath] - Optional local repo path
  * @param {string} [promptPath] - Optional path to review-agent.md
  * @param {object} [jiraTicket] - Optional Jira ticket data
+ * @param {boolean} [useSerena] - Whether to enable Serena MCP tools
  * @returns {Promise<{prompt: string, claudeRaw: string, claudeStderr: string, review: object}>}
  */
-export async function reviewWithClaude(prTitle, prDescription, diffFiles, onEvent, repoPath, promptPath, jiraTicket) {
-  const prompt = buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptPath, jiraTicket)
+export async function reviewWithClaude(prTitle, prDescription, diffFiles, onEvent, repoPath, promptPath, jiraTicket, useSerena) {
+  const prompt = buildPrompt(prTitle, prDescription, diffFiles, repoPath, promptPath, jiraTicket, useSerena)
 
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--allowedTools', 'mcp__serena__*,Read,Grep,Glob']
+  const allowedTools = useSerena ? 'mcp__serena__*,Read,Grep,Glob' : 'Read,Grep,Glob'
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--allowedTools', allowedTools]
   if (repoPath) {
     args.push('--add-dir', repoPath)
   }

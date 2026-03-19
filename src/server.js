@@ -75,7 +75,7 @@ export function createApp() {
   // ── Start review (async pipeline) ───────────────────────────
 
   app.post('/api/start-review', (req, res) => {
-    let { workspace, repo, prId, email, token, repoPath, jiraDomain, jiraToken } = req.body
+    let { workspace, repo, prId, email, token, repoPath, useSerena, jiraDomain, jiraToken } = req.body
 
     if (!workspace || !repo || !prId || !email || !token) {
       return res.json({ ok: false, error: 'Brakuje wymaganych pól' })
@@ -95,7 +95,7 @@ export function createApp() {
     // Return immediately, run pipeline in background
     res.json({ ok: true })
 
-    runReviewPipeline({ workspace, repo, prId, email, token, repoPath, jiraDomain, jiraToken })
+    runReviewPipeline({ workspace, repo, prId, email, token, repoPath, useSerena: !!useSerena, jiraDomain, jiraToken })
   })
 
   // ── Get current review ──────────────────────────────────────
@@ -264,7 +264,7 @@ export function createApp() {
 
 // ── Review pipeline ─────────────────────────────────────────────
 
-async function runReviewPipeline({ workspace, repo, prId, email, token, repoPath, jiraDomain, jiraToken }) {
+async function runReviewPipeline({ workspace, repo, prId, email, token, repoPath, useSerena, jiraDomain, jiraToken }) {
   try {
     sendSSE('status', { step: 'pr-loading', message: 'Pobieranie informacji o PR...' })
 
@@ -308,7 +308,7 @@ async function runReviewPipeline({ workspace, repo, prId, email, token, repoPath
         } else if (event.type === 'tool_result') {
           sendSSE('claude-tool-result', { tool_use_id: event.tool_use_id, content: event.content })
         } else if (event.type === 'system') {
-          sendSSE('claude-system', { model: event.model, tools: event.tools })
+          sendSSE('claude-system', { model: event.model, tools: event.tools, serena: useSerena })
         } else if (event.type === 'cost') {
           sendSSE('claude-cost', {
             cost_usd: event.cost_usd,
@@ -322,7 +322,8 @@ async function runReviewPipeline({ workspace, repo, prId, email, token, repoPath
       },
       repoPath,
       undefined,
-      jiraTicket
+      jiraTicket,
+      useSerena
     )
 
     const logPath = saveLog(workspace, repo, prId, {

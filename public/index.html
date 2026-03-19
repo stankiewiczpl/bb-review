@@ -408,6 +408,13 @@
         <div id="context-path-group" style="display:none;margin-top:10px;">
           <input type="text" id="input-repo-path" placeholder="/home/user/projekty/moje-repo">
           <div id="path-status"></div>
+          <label class="toggle-label" style="margin-top:8px;">
+            <span class="toggle-switch">
+              <input type="checkbox" id="cb-use-serena">
+              <span class="toggle-slider"></span>
+            </span>
+            Serena MCP (semantyczna analiza kodu)
+          </label>
         </div>
       </div>
 
@@ -652,6 +659,9 @@
         document.getElementById('cb-use-context').checked = true
         document.getElementById('context-path-group').style.display = 'block'
       }
+      if (config.useSerena !== false) {
+        document.getElementById('cb-use-serena').checked = true
+      }
       if (config.jiraDomain) {
         document.getElementById('input-jira-domain').value = config.jiraDomain
         document.getElementById('jira-token-group').style.display = 'block'
@@ -767,6 +777,10 @@
       saveConfig({ useContext: e.target.checked })
     })
 
+    document.getElementById('cb-use-serena').addEventListener('change', function(e) {
+      saveConfig({ useSerena: e.target.checked })
+    })
+
     // Path validation (debounced)
     document.getElementById('input-repo-path').addEventListener('input', function() {
       clearTimeout(pathValidateTimer)
@@ -834,6 +848,7 @@
 
       const jiraDomain = document.getElementById('input-jira-domain').value.trim() || null
       const jiraToken = document.getElementById('input-jira-token').value.trim() || null
+      const useSerena = repoPath ? document.getElementById('cb-use-serena').checked : false
 
       saveConfig({ lastWorkspace: workspace, lastRepo: repo, lastRepoPath: repoPath || '', jiraDomain: jiraDomain || '', jiraToken: jiraToken || '' })
 
@@ -843,7 +858,7 @@
         const res = await fetch('/api/start-review', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workspace, repo, prId, email, token, repoPath, jiraDomain, jiraToken })
+          body: JSON.stringify({ workspace, repo, prId, email, token, repoPath, useSerena, jiraDomain, jiraToken })
         })
         const data = await res.json()
         if (data.ok) {
@@ -914,7 +929,8 @@
 
       eventSource.addEventListener('claude-system', function(e) {
         const data = JSON.parse(e.data)
-        appendClaudeOutput('[system] model: ' + (data.model || '?') + '\n')
+        const serenaInfo = data.serena ? ' | Serena MCP: ON' : ' | Serena MCP: OFF'
+        appendClaudeOutput('[system] model: ' + (data.model || '?') + serenaInfo + '\n')
       })
 
       eventSource.addEventListener('claude-cost', function(e) {
